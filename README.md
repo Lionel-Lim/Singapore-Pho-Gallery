@@ -3,7 +3,7 @@
 
 ![Tech Stack](https://img.shields.io/badge/Flutter-02569B?style=flat&logo=flutter) ![Backend](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi) ![Database](https://img.shields.io/badge/Firebase-FFCA28?style=flat&logo=firebase) ![AI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai)
 
-![Alt Text]([https://example.com/my-image.png](https://raw.githubusercontent.com/Lionel-Lim/Singapore-Pho-Gallery/refs/heads/main/Main.png))
+![Alt Text](https://raw.githubusercontent.com/Lionel-Lim/Singapore-Pho-Gallery/refs/heads/main/Main.png)
 
 ## 🍳 Overview  
 A Flutter-based solution addressing Singapore's nutrition challenges through AI-driven meal planning and phased cooking engagement. Aligns with Singapore's "30 by 30" food security initiative by connecting users with local farmers.
