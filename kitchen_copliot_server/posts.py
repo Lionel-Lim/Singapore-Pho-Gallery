@@ -1,7 +1,15 @@
-from fastapi import HTTPException
+from fastapi import HTTPException, APIRouter
 from database import db
 from models import Post, Comment, Like
 from datetime import datetime
+
+router = APIRouter()
+
+
+@router.get("/posts")
+def read_all_posts():
+    return get_all_posts()
+
 
 def create_post(post_data: Post):
     """Creates a new post in Firestore."""
@@ -10,6 +18,7 @@ def create_post(post_data: Post):
     doc_ref = db.collection("posts").document()
     doc_ref.set(data_dict)
     return {"post_id": doc_ref.id, **data_dict}
+
 
 def get_post_with_recipe(post_id: str):
     """Fetches a single post with optional recipe data."""
@@ -26,3 +35,18 @@ def get_post_with_recipe(post_id: str):
             post_data["recipe"] = recipe_doc.to_dict()
 
     return post_data
+
+
+def get_all_posts():
+    """Fetches all posts from Firestore."""
+    docs = db.collection("posts").get()
+    posts = []
+    for doc in docs:
+        data = doc.to_dict()
+        data["post_id"] = doc.id
+        if data.get("recipe_id"):
+            recipe_doc = db.collection("recipes").document(data["recipe_id"]).get()
+            if recipe_doc.exists():
+                data["recipe"] = recipe_doc.to_dict()
+        posts.append(data)
+    return posts

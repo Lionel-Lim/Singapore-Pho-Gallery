@@ -40,6 +40,7 @@ dependencies:
   google_maps_flutter: ^2.6.1
   marquee: ^2.2.3
   intl: ^0.20.2
+  html_unescape: ^2.0.0
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +68,8 @@ flutter:
     - assets/splash.png
     - assets/images/placeholder.png
     - assets/images/kitchen_copliot_icon.png
+    - assets/images/profile.png
+    - assets/images/
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

@@ -1,5 +1,8 @@
+import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:marquee/marquee.dart';
+import 'package:http/http.dart' as http;
 import '../constants.dart'; // kPrimaryColor, kFontFamily
 import 'ingredient_lookup_screen.dart'; // We'll define next
 
@@ -71,42 +74,47 @@ class _RecipeScreenState extends State<RecipeScreen>
     super.dispose();
   }
 
-  // Simulated backend call to fetch the recipe data. Replace with real API call.
   Future<Recipe> _fetchRecipe(String recipeId) async {
-    await Future.delayed(const Duration(seconds: 1));
-    // Return dummy data
+    final response = await http.get(
+      Uri.parse('http://127.0.0.1:8000/get-meal-by-id/$recipeId'),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load recipe');
+    }
+    final data = json.decode(response.body);
+    final List<IngredientItem> allItems = [];
+
+    for (int i = 1; i <= 20; i++) {
+      final ingr = data['strIngredient$i'];
+      final measure = data['strMeasure$i'];
+      if (ingr != null && (ingr as String).trim().isNotEmpty) {
+        allItems.add(
+          IngredientItem(name: ingr, quantity: measure ?? ''),
+        );
+      }
+    }
+
+    // For simplicity, put all ingredients in a single section
+    final sections = [
+      IngredientSection(sectionName: 'Main Ingredients', items: allItems),
+    ];
+
+    // Split instructions by line breaks if not null
+    final instructionsRaw = data['strInstructions'] ?? '';
+    final instructionsList = instructionsRaw.toString().split('\r\n');
+
     return Recipe(
-      id: recipeId,
-      title: "NORMANDY CREPES",
-      imageUrl: "https://somecdn.com/crepes.jpg",
-      sourceName: "cookingqueen.com",
-      sourceUrl: "http://www.cookingqueen.com",
-      prepTime: 30,
-      cookTime: 30,
-      servings: 4,
-      ingredientsSections: [
-        IngredientSection(
-          sectionName: "Ingredients for crust",
-          items: [
-            IngredientItem(name: "Eggs", quantity: "12 pcs"),
-            IngredientItem(name: "Milk", quantity: "2 l"),
-            IngredientItem(name: "Strawberries", quantity: "200 g"),
-          ],
-        ),
-        IngredientSection(
-          sectionName: "Ingredients for topping",
-          items: [
-            IngredientItem(name: "Sugar", quantity: "50 g"),
-            IngredientItem(name: "Butter", quantity: "2 tbsp"),
-          ],
-        ),
-      ],
-      instructions: [
-        "Mix the crust ingredients thoroughly",
-        "Cook on medium heat for 15 minutes",
-        "Add topping as desired",
-      ],
-      notes: "Extra notes here about the recipe.",
+      id: data['idMeal'] ?? recipeId,
+      title: data['strMeal'] ?? '',
+      imageUrl: data['strMealThumb'] ?? '',
+      sourceName: data['strSource'] ?? '',
+      sourceUrl: data['strSource'] ?? '',
+      prepTime: 30, // No real data in response
+      cookTime: 30, // No real data in response
+      servings: 2, // No real data in response
+      ingredientsSections: sections,
+      instructions: instructionsList,
+      notes: '',
     );
   }
 
@@ -130,9 +138,9 @@ class _RecipeScreenState extends State<RecipeScreen>
             Tab(text: "INSTRUCTIONS"),
             Tab(text: "NOTES"),
           ],
-          // Set the lable color to white
+          // Set the label color to white
           labelColor: Colors.white,
-          unselectedLabelColor: Colors.grey[300],
+          unselectedLabelColor: Colors.grey,
         ),
       ),
       body: Container(
@@ -202,8 +210,17 @@ class _RecipeScreenState extends State<RecipeScreen>
     );
   }
 
-  // Each ingredient section
+  // Each ingredient section with up to 3 random "Certified" marks.
   Widget _buildIngredientSection(IngredientSection section) {
+    // Create a set of random indices for ingredients that will be certified.
+    final random = Random();
+    final indices = List<int>.generate(section.items.length, (i) => i);
+    indices.shuffle(random);
+    // Pick up to 3 indices (or all if fewer than 3)
+    final certifiedIndices = indices
+        .take(section.items.length >= 3 ? 3 : section.items.length)
+        .toSet();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
@@ -218,16 +235,18 @@ class _RecipeScreenState extends State<RecipeScreen>
             ),
           ),
           const SizedBox(height: 4),
-          // For each item in this section
-          ...section.items.map(
-            (item) => InkWell(
+          // For each ingredient item in this section.
+          ...section.items.asMap().entries.map((entry) {
+            final index = entry.key;
+            final item = entry.value;
+            final bool isCertified = certifiedIndices.contains(index);
+            return InkWell(
               onTap: () {
-                // Navigate to ingredient look up screen
+                // Navigate to ingredient look up screen.
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (ctx) => IngredientLookUpScreen(
-                      ingredientName: item.name,
-                    ),
+                    builder: (ctx) =>
+                        IngredientLookUpScreen(ingredientName: item.name),
                   ),
                 );
               },
@@ -236,15 +255,35 @@ class _RecipeScreenState extends State<RecipeScreen>
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(item.name,
-                        style: const TextStyle(fontFamily: kFontFamily)),
+                    // Ingredient name with optional certified mark.
+                    Row(
+                      children: [
+                        Text(item.name,
+                            style: const TextStyle(fontFamily: kFontFamily)),
+                        if (isCertified) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.verified,
+                              size: 16, color: Colors.green),
+                          const SizedBox(width: 4),
+                          const Text(
+                            "Singapore’s Freshest",
+                            style: TextStyle(
+                              fontFamily: kFontFamily,
+                              fontSize: 12,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    // Ingredient quantity.
                     Text(item.quantity,
                         style: const TextStyle(fontFamily: kFontFamily)),
                   ],
                 ),
               ),
-            ),
-          ),
+            );
+          }),
         ],
       ),
     );
@@ -342,7 +381,7 @@ class _RecipeScreenState extends State<RecipeScreen>
           ),
         ),
         const SizedBox(height: 8),
-        // Title with possible marquee
+        // Title with marquee if needed.
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: (recipe.title.length > 25)
@@ -372,11 +411,14 @@ class _RecipeScreenState extends State<RecipeScreen>
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             "Source: ${recipe.sourceName}",
-            style: const TextStyle(fontFamily: kFontFamily, color: Colors.grey),
+            style: const TextStyle(
+              fontFamily: kFontFamily,
+              color: Colors.grey,
+            ),
           ),
         ),
         const SizedBox(height: 8),
-        // Times
+        // Times row.
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
@@ -399,7 +441,7 @@ class _RecipeScreenState extends State<RecipeScreen>
           ),
         ),
         const SizedBox(height: 8),
-        // Buttons
+        // Buttons row.
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
@@ -425,7 +467,7 @@ class _RecipeScreenState extends State<RecipeScreen>
                       const SnackBar(content: Text('Starting cooking!')),
                     );
                   },
-                  child: const Text('START COOKING',
+                  child: const Text('START COOKING with Copilot',
                       style: TextStyle(fontFamily: kFontFamily)),
                 ),
               ),

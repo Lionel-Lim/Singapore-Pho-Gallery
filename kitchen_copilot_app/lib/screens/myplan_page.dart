@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:marquee/marquee.dart';
 import 'package:intl/intl.dart'; // for date formatting
+import 'package:http/http.dart' as http;
 import '../constants.dart';
 import 'recipe_page.dart'; // kPrimaryColor, kFontFamily
 
@@ -28,22 +30,18 @@ class _MyPlanPageState extends State<MyPlanPage> {
   // For generating actual dates instead of "Monday, Tuesday..."
   late List<DateTime> _weekDates;
 
-  // Predefined days: replaced by actual date logic
-  // final List<String> _days = [
-  //   'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
-  // ];
+  // Meal times to be displayed.
   final List<String> _mealTimes = ['Breakfast', 'Lunch', 'Dinner'];
 
   final List<String> _examples = [
     "1 week meal plan with high protein without beef",
-    "Broccoli recipe for picky 4 years old kids",
+    "Easy meal plan for a busy week",
     "Spicy recipe for stressful day",
   ];
 
-  // Summary text and meal plan data (dummy).
+  // Summary text and meal plan data from backend.
   String? _summary;
-  // Meal plan: dateKey -> mealTime -> Meal.
-  // dateKey is e.g. '2023-08-21' for Monday.
+  // Meal plan: day -> mealTime -> Meal.
   Map<String, Map<String, Meal>> _mealPlan = {};
 
   // Flags for generation process.
@@ -74,50 +72,76 @@ class _MyPlanPageState extends State<MyPlanPage> {
   // Controller for custom prompt input.
   final TextEditingController _promptController = TextEditingController();
 
+  // Notification messages and demo meal id.
+  final List<String> _notifications = [];
+  String? _demoMealId;
+
   @override
   void initState() {
     super.initState();
-    // 1) Figure out the "start of the week" (Monday).
-    //    This example uses the current local date to find Monday of this week.
+    // Figure out the "start of the week" (Monday).
     final now = DateTime.now();
     // weekday in Dart: Monday=1, Sunday=7.
     final int currentWeekday = now.weekday;
-    // Subtract enough days to get to Monday
     final monday = now.subtract(Duration(days: currentWeekday - 1));
-    // Build a list of 7 dates: Monday to Sunday
+    // Build a list of 7 dates: Monday to Sunday.
     _weekDates = List.generate(7, (i) => monday.add(Duration(days: i)));
   }
 
-  // Simulated backend call to generate the meal plan.
-  Future<void> _generatePlan(String prompt) async {
+  /// Fetch the meal plan from the backend.
+  Future<void> _fetchMealPlanFromBackend() async {
     setState(() {
       _isGenerating = true;
     });
-    await Future.delayed(const Duration(seconds: 2));
-    // Show success overlay.
-    setState(() {
-      _isGenerating = false;
-      _showCreatedWidget = true;
-    });
-    await Future.delayed(const Duration(seconds: 2));
-    // Populate summary & meal plan with dummy data.
-    setState(() {
-      _summary = "Based on your input, here's your meal plan for the week.";
-      _mealPlan = {
-        for (var date in _weekDates)
-          _formatDateKey(date): {
-            for (var time in _mealTimes)
-              time: Meal(
-                id: '${_formatDateKey(date)}-$time',
-                name: "$time on ${DateFormat('E, MMM d').format(date)}",
-                description:
-                    "Delicious $time meal for ${_formatDateKey(date)}.",
-                imageUrl: "assets/images/placeholder.png",
-              )
-          }
-      };
-      _showCreatedWidget = false;
-    });
+    try {
+      final uri = Uri.parse('http://127.0.0.1:8000/demo-meal-plan');
+      final response = await http.get(uri);
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        setState(() {
+          _summary = data['summary'];
+          final mealPlanData = data['mealPlan'] as Map<String, dynamic>;
+          _mealPlan = {};
+          // For each day (e.g., "Monday", "Tuesday", etc.)
+          mealPlanData.forEach((day, meals) {
+            final mealsMap = meals as Map<String, dynamic>;
+            Map<String, Meal> dayMeals = {};
+            mealsMap.forEach((mealTime, mealJson) {
+              dayMeals[mealTime] = Meal(
+                id: mealJson['id'],
+                name: mealJson['name'],
+                description: "", // No description provided from backend.
+                imageUrl: mealJson['imageUrl'],
+              );
+            });
+            _mealPlan[day] = dayMeals;
+          });
+          _isGenerating = false;
+          _showCreatedWidget = true;
+        });
+        // Hide the created widget overlay after a delay.
+        await Future.delayed(const Duration(seconds: 2));
+        setState(() {
+          _showCreatedWidget = false;
+        });
+      } else {
+        setState(() {
+          _isGenerating = false;
+        });
+        throw Exception('Failed to load meal plan');
+      }
+    } catch (error) {
+      setState(() {
+        _isGenerating = false;
+      });
+      // Handle error appropriately (e.g., show a Snackbar or AlertDialog).
+      rethrow;
+    }
+  }
+
+  // Updated _generatePlan simply calls the backend.
+  Future<void> _generatePlan(String prompt) async {
+    await _fetchMealPlanFromBackend();
   }
 
   // Helper to produce a date key like '2023-08-21'
@@ -184,6 +208,36 @@ class _MyPlanPageState extends State<MyPlanPage> {
     );
   }
 
+  // Handler for chat demo.
+  void _onChatDemo() {
+    if (_mealPlan.isEmpty) return;
+    final anyDay = _mealPlan.keys.first;
+    final anyMealTime = _mealPlan[anyDay]!.keys.first;
+    final selectedMeal = _mealPlan[anyDay]![anyMealTime];
+    if (selectedMeal != null) {
+      setState(() {
+        _demoMealId = selectedMeal.id;
+        _notifications.add(
+            "Try ${selectedMeal.name} at home this week within 20 mins. Fresh ingredients are ready for you.");
+      });
+    }
+  }
+
+  // Handler for notifications tap.
+  void _onNotificationsTap() {
+    if (_notifications.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Notifications"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _notifications.map((msg) => Text(msg)).toList(),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _promptController.dispose();
@@ -192,7 +246,7 @@ class _MyPlanPageState extends State<MyPlanPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Use the same app bar style as in CommunityPage.
+    // App bar with title and action icons.
     final appBar = PreferredSize(
       preferredSize: const Size.fromHeight(kToolbarHeight * 2.484),
       child: AppBar(
@@ -203,7 +257,7 @@ class _MyPlanPageState extends State<MyPlanPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Title with same style as CommunityPage.
+              // Title.
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Center(
@@ -218,17 +272,17 @@ class _MyPlanPageState extends State<MyPlanPage> {
                   ),
                 ),
               ),
-              // Row of icons placed exactly as in CommunityPage, with a cog icon added (only if plan exists).
+              // Action icons.
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   IconButton(
                     icon: const Icon(Icons.chat, color: Colors.white),
-                    onPressed: () {},
+                    onPressed: _onChatDemo,
                   ),
                   IconButton(
                     icon: const Icon(Icons.notifications, color: Colors.white),
-                    onPressed: () {},
+                    onPressed: _onNotificationsTap,
                   ),
                   IconButton(
                     icon: const Icon(Icons.menu, color: Colors.white),
@@ -267,7 +321,7 @@ class _MyPlanPageState extends State<MyPlanPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Kitchen Copilot icon from assets, trimmed to a circle.
+              // Kitchen Copilot icon.
               const CircleAvatar(
                 radius: 40,
                 backgroundImage:
@@ -291,7 +345,7 @@ class _MyPlanPageState extends State<MyPlanPage> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              // Selectable examples.
+              // Examples list.
               Column(
                 children: _examples.map((example) {
                   return InkWell(
@@ -319,7 +373,7 @@ class _MyPlanPageState extends State<MyPlanPage> {
                             ),
                             blankSpace: MediaQuery.of(context).size.width / 2,
                             pauseAfterRound: const Duration(seconds: 3),
-                            startAfter: const Duration(seconds: 5),
+                            startAfter: const Duration(seconds: 15),
                           ),
                         ),
                       ),
@@ -328,7 +382,7 @@ class _MyPlanPageState extends State<MyPlanPage> {
                 }).toList(),
               ),
               const SizedBox(height: 16),
-              // Prompt input with themed border.
+              // Prompt input.
               AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
                 padding: const EdgeInsets.all(8),
@@ -419,9 +473,7 @@ class _MyPlanPageState extends State<MyPlanPage> {
                 _summary ?? '',
                 style: const TextStyle(fontSize: 16, fontFamily: kFontFamily),
               ),
-              const SizedBox(
-                height: 20,
-              ),
+              const SizedBox(height: 20),
               Container(
                 alignment: Alignment.topRight,
                 child: ElevatedButton(
@@ -436,10 +488,10 @@ class _MyPlanPageState extends State<MyPlanPage> {
             ],
           ),
         ),
-        // Meal plan grid with a uniform background color.
+        // Meal plan grid.
         Expanded(
           child: Container(
-            color: Colors.grey[200], // unify background color
+            color: Colors.grey[200],
             child: SingleChildScrollView(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -461,22 +513,20 @@ class _MyPlanPageState extends State<MyPlanPage> {
 
   List<TableRow> _buildMealPlanRows() {
     List<TableRow> rows = [];
-    // Header row: first cell is empty, then meal times
+    // Header row: empty first cell then meal times.
     rows.add(
       TableRow(
         children: [
           TableCell(
             child: Container(
               color: Colors.grey[400],
-              child: const Padding(
-                padding: EdgeInsets.all(8.0),
-                child: Text(
-                  '',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: kFontFamily,
-                    fontWeight: FontWeight.bold,
-                  ),
+              padding: const EdgeInsets.all(8.0),
+              child: const Text(
+                '',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: kFontFamily,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
@@ -484,16 +534,14 @@ class _MyPlanPageState extends State<MyPlanPage> {
           ..._mealTimes.map((time) => TableCell(
                 child: Container(
                   color: Colors.grey[400],
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Text(
-                      time,
-                      style: const TextStyle(
-                        fontFamily: kFontFamily,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    time,
+                    style: const TextStyle(
+                      fontFamily: kFontFamily,
+                      fontWeight: FontWeight.bold,
                     ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
               )),
@@ -501,13 +549,15 @@ class _MyPlanPageState extends State<MyPlanPage> {
       ),
     );
 
-    // For each date in _weekDates, show date in the first column, then the meals.
+    // For each date in _weekDates.
     for (var date in _weekDates) {
-      final dateKey = _formatDateKey(date); // e.g. '2023-08-21'
+      // Use the day name (e.g., Monday) as key to look up the meal.
+      final dayName = DateFormat('EEEE').format(date);
+      final dateKey = _formatDateKey(date);
       rows.add(
         TableRow(
           children: [
-            // Left column: actual date
+            // Date column.
             TableCell(
               child: Container(
                 color: Colors.grey[400],
@@ -518,7 +568,7 @@ class _MyPlanPageState extends State<MyPlanPage> {
                     child: RotatedBox(
                       quarterTurns: -1,
                       child: Text(
-                        _displayDate(date), // e.g. 'Mon, Aug 21'
+                        _displayDate(date),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontSize: 13,
@@ -531,31 +581,33 @@ class _MyPlanPageState extends State<MyPlanPage> {
                 ),
               ),
             ),
-            // MealTime columns
+            // Meal time columns.
             ..._mealTimes.map((mealTime) {
-              final meal = _mealPlan[dateKey]?[mealTime];
+              final meal = _mealPlan[dayName]?[mealTime];
               return TableCell(
                 child: GestureDetector(
                   onTap: meal == null ? null : () => _navigateToRecipe(meal),
                   child: SizedBox(
-                    height: 100, // the cell’s total height
+                    height: 100,
                     child: Stack(
                       children: [
-                        // Fill the cell with the placeholder image
+                        // Meal image (network or fallback asset).
                         Positioned.fill(
-                          child: Image.asset(
-                            'assets/images/placeholder.png',
-                            fit: BoxFit.cover,
-                          ),
+                          child: meal != null &&
+                                  meal.imageUrl.startsWith("http")
+                              ? Image.network(meal.imageUrl, fit: BoxFit.cover)
+                              : Image.asset(
+                                  'assets/images/placeholder.png',
+                                  fit: BoxFit.cover,
+                                ),
                         ),
-                        // Show meal name at the bottom (using marquee if too long)
+                        // Meal name overlay.
                         if (meal != null)
                           Positioned(
                             bottom: 0,
                             left: 0,
                             right: 0,
                             child: Container(
-                              // A semi-transparent overlay to help text readability
                               color: Colors.black38,
                               height: 20,
                               child: meal.name.length > 20
@@ -581,7 +633,7 @@ class _MyPlanPageState extends State<MyPlanPage> {
                                     ),
                             ),
                           ),
-                        // Show the config (Replace) overlay icon if enabled
+                        // Config overlay icon.
                         if (_showConfigOverlay)
                           Positioned(
                             top: 0,
@@ -590,7 +642,24 @@ class _MyPlanPageState extends State<MyPlanPage> {
                               icon: const Icon(Icons.settings,
                                   size: 16, color: Colors.red),
                               onPressed: () =>
-                                  _showMealConfigOverlay(dateKey, mealTime),
+                                  _showMealConfigOverlay(dayName, mealTime),
+                            ),
+                          ),
+                        // "Try at Home" ribbon.
+                        if (meal != null && meal.id == _demoMealId)
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            child: Container(
+                              color: Colors.orange,
+                              padding: const EdgeInsets.all(4),
+                              child: const Text(
+                                "Try at Home",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
                       ],
@@ -672,19 +741,25 @@ class _MealConfigOverlayState extends State<MealConfigOverlay> {
           const SizedBox(height: 16),
           Expanded(
             child: ListView.builder(
-              controller:
-                  widget.scrollController, // link DraggableScrollableSheet
+              controller: widget.scrollController,
               itemCount: _results.length,
               itemBuilder: (context, index) {
                 final meal = _results[index];
                 return Card(
                   child: ListTile(
-                    leading: Image.asset(
-                      'assets/images/placeholder.png',
-                      width: 50,
-                      height: 50,
-                      fit: BoxFit.cover,
-                    ),
+                    leading: meal.imageUrl.startsWith("http")
+                        ? Image.network(
+                            meal.imageUrl,
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                          )
+                        : Image.asset(
+                            meal.imageUrl,
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                          ),
                     title: Text(meal.name,
                         style: const TextStyle(fontFamily: kFontFamily)),
                     subtitle: Text(meal.description,

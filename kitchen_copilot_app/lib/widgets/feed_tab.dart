@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../models/post.dart';
@@ -10,18 +9,15 @@ class FeedTab extends StatelessWidget {
   const FeedTab({super.key, required this.feedCategory});
 
   Future<List<Post>> _fetchPosts() async {
-    if (kDebugMode) {
-      return mockPosts;
+    // Use your backend URL here. Adjust if your route differs (e.g. /get-all-posts).
+    final uri = Uri.parse('http://127.0.0.1:8000/get-all-posts');
+    final response = await http.get(uri);
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      return data.map((item) => Post.fromJson(item)).toList();
     } else {
-      final uri = Uri.parse(
-          'https://<YOUR-FIREBASE-FUNCTIONS-ENDPOINT>/posts?category=$feedCategory');
-      final response = await http.get(uri);
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((item) => Post.fromJson(item)).toList();
-      } else {
-        throw Exception('Failed to load posts');
-      }
+      throw Exception('Failed to load posts');
     }
   }
 
@@ -38,9 +34,15 @@ class FeedTab extends StatelessWidget {
           return const Center(child: Text('No posts found'));
         } else {
           final posts = snapshot.data!;
+          // Filter posts based on feedCategory (Follow, explorer, community)
+          final filteredPosts = posts
+              .where((post) =>
+                  post.postType.toLowerCase() == feedCategory.toLowerCase())
+              .toList();
           return ListView.builder(
-            itemCount: posts.length,
-            itemBuilder: (context, index) => PostWidget(post: posts[index]),
+            itemCount: filteredPosts.length,
+            itemBuilder: (context, index) =>
+                PostWidget(post: filteredPosts[index]),
           );
         }
       },

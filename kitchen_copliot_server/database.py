@@ -11,7 +11,14 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-def create_user(name: str, email: str, diet: str = None, excluded_ingredients: list = None, cuisine: list = None):
+
+def create_user(
+    name: str,
+    email: str,
+    diet: str = None,
+    excluded_ingredients: list = None,
+    cuisine: list = None,
+):
     """Creates a new user and stores preferences in Firestore."""
     user_id = str(uuid.uuid4())  # Generate a unique ID
 
@@ -22,21 +29,23 @@ def create_user(name: str, email: str, diet: str = None, excluded_ingredients: l
         "preferences": {
             "diet": diet or "none",
             "excluded_ingredients": excluded_ingredients or [],
-            "cuisine": cuisine or []
+            "cuisine": cuisine or [],
         },
-        "created_at": datetime.utcnow()
+        "created_at": datetime.utcnow(),
     }
 
     db.collection("users").document(user_id).set(user_data)
-    
+
     # ✅ Return the generated user_id in the response
     return {"message": "User created successfully!", "user_id": user_id}
+
 
 def get_monday_of_current_week():
     """Returns the date (YYYY-MM-DD) of the most recent Monday."""
     today = datetime.utcnow()
     monday = today - timedelta(days=today.weekday())  # Moves back to Monday
     return monday.strftime("%Y-%m-%d")
+
 
 def store_weekly_meal_plan(user_id: str, meal_plan: dict):
     """Stores a full weekly meal plan under a user's subcollection in Firestore."""
@@ -55,11 +64,15 @@ def store_weekly_meal_plan(user_id: str, meal_plan: dict):
     meal_plan_doc_ref = user_ref.collection("meal_plans").document(f"week_{week_start}")
     meal_plan_data = {
         "week_start": week_start,
-        "mealPlan": meal_plan  # ✅ Store full week meal plan instead of one day
+        "mealPlan": meal_plan,  # ✅ Store full week meal plan instead of one day
     }
 
     meal_plan_doc_ref.set(meal_plan_data)
-    return {"message": "Full weekly meal plan stored successfully!", "week_start": week_start}
+    return {
+        "message": "Full weekly meal plan stored successfully!",
+        "week_start": week_start,
+    }
+
 
 def get_user_meal_plans(user_id: str):
     """Fetches all meal plans for a user from Firestore."""
@@ -70,4 +83,6 @@ def get_user_meal_plans(user_id: str):
     for doc in meal_plans_ref:
         meal_plans[doc.id] = doc.to_dict()
 
-    return meal_plans if meal_plans else {"message": "No meal plans found for this user"}
+    return (
+        meal_plans if meal_plans else {"message": "No meal plans found for this user"}
+    )

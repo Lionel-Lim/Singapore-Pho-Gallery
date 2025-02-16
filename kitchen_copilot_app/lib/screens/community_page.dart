@@ -52,12 +52,12 @@ class _CommunityPageState extends State<CommunityPage>
     return {
       const Marker(
         markerId: MarkerId('1'),
-        position: LatLng(37.7749, -122.4194),
+        position: LatLng(1.3850327554469075, 103.96662908099094),
         infoWindow: InfoWindow(title: 'Post 1'),
       ),
       const Marker(
         markerId: MarkerId('2'),
-        position: LatLng(37.7849, -122.4094),
+        position: LatLng(1.3232510015632135, 103.80979258466508),
         infoWindow: InfoWindow(title: 'Post 2'),
       ),
     };
@@ -166,7 +166,7 @@ class _CommunityPageState extends State<CommunityPage>
                             });
                           },
                         )
-                      : const FeedTab(feedCategory: 'Nearby'),
+                      : const FeedTab(feedCategory: 'community'),
                 ],
               ),
             ),
@@ -281,9 +281,11 @@ class MapView extends StatelessWidget {
         // Expanded section: Google Map
         Expanded(
           child: GoogleMap(
+            onMapCreated: (GoogleMapController controller) {},
+            mapType: MapType.normal,
             initialCameraPosition: const CameraPosition(
-              target: LatLng(37.7749, -122.4194),
-              zoom: 12,
+              target: LatLng(1.3521, 103.8198),
+              zoom: 7,
             ),
             markers: markers,
           ),
